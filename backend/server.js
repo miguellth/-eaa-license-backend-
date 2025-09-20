@@ -13,6 +13,9 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Enable trust proxy - needed for Railway deployment
+app.set('trust proxy', 1);
+
 // Logging setup
 const logger = winston.createLogger({
   level: 'info',
@@ -67,21 +70,29 @@ const licenseRoute = require('./routes/license');
 app.use('/stripe', stripeWebhookRoute);
 app.use('/api/license', licenseRoute);
 
-// Health check
-app.get('/health', async (req, res) => {
+// Health check - basic check without database
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    service: 'eaa-plugin-api',
+    version: process.env.PLUGIN_VERSION || '1.0.0'
+  });
+});
+
+// Database health check
+app.get('/health-db', async (req, res) => {
   try {
     await pool.query('SELECT 1');
     res.json({ 
-      status: 'healthy', 
-      timestamp: new Date().toISOString(),
-      service: 'eaa-plugin-api',
-      version: process.env.PLUGIN_VERSION || '1.0.0'
+      status: 'database-healthy', 
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
-    logger.error('Health check failed:', error);
+    logger.error('Database health check failed:', error);
     res.status(503).json({ 
-      status: 'unhealthy', 
-      error: 'Database connection failed' 
+      status: 'database-unhealthy', 
+      error: error.message
     });
   }
 });
@@ -110,3 +121,4 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
+
