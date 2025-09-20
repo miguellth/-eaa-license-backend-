@@ -39,15 +39,63 @@ const pool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+// Initialize database on startup
+const initializeDatabase = async () => {
+  try {
+    console.log('🔧 Initializing database...');
+    
+    // Create licenses table if it doesn't exist
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS licenses (
+        id SERIAL PRIMARY KEY,
+        license_key VARCHAR(50) UNIQUE NOT NULL,
+        customer_id VARCHAR(255),
+        subscription_id VARCHAR(255),
+        email VARCHAR(255) NOT NULL,
+        domain VARCHAR(255),
+        plan VARCHAR(50) NOT NULL DEFAULT 'starter',
+        status VARCHAR(50) NOT NULL DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        expires_at TIMESTAMP,
+        last_used TIMESTAMP,
+        usage_count INTEGER DEFAULT 0
+      )
+    `);
+    
+    // Create other essential tables
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS customers (
+        id SERIAL PRIMARY KEY,
+        stripe_customer_id VARCHAR(255) UNIQUE NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        name VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    console.log('✅ Database initialized successfully');
+  } catch (error) {
+    console.error('❌ Database initialization failed:', error);
+  }
+};
+
+// Initialize database on startup
+initializeDatabase();
+
 // Middleware
 app.use(helmet());
 app.use(compression());
 app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) }}));
 
-// Rate limiting
+// Rate limiting - configure for Railway proxy
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  max: 100, // limit each IP to 100 requests per windowMs
+  trustProxy: true, // Trust Railway proxy
+  standardHeaders: true,
+  legacyHeaders: false
 });
 app.use(limiter);
 
@@ -121,4 +169,3 @@ app.listen(PORT, () => {
 });
 
 module.exports = app;
-
